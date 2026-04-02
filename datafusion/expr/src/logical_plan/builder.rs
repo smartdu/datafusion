@@ -33,9 +33,9 @@ use crate::expr_rewriter::{
 };
 use crate::logical_plan::{
     Aggregate, Analyze, Distinct, DistinctOn, EmptyRelation, Explain, Filter, Join,
-    JoinConstraint, JoinType, Limit, LogicalPlan, Partitioning, PlanType, Prepare,
-    Projection, Repartition, Sort, SubqueryAlias, TableScan, Union, Unnest, Values,
-    Window,
+    JoinConstraint, JoinType, Limit, LogicalPlan, MapPartition, Partitioning, PlanType,
+    Prepare, Projection, Repartition, Sort, SubqueryAlias, TableScan, Union, Unnest,
+    Values, Window,
 };
 use crate::select_expr::SelectExpr;
 use crate::utils::{
@@ -657,6 +657,36 @@ impl LogicalPlanBuilder {
             fetch: fetch.map(Box::new),
             input: self.plan,
         })))
+    }
+
+    /// Apply a user-defined function to each partition of data.
+    ///
+    /// This is similar to Spark's `mapPartitions` - it allows processing all data
+    /// in a partition at once, enabling custom processing logic that may:
+    /// - Change the schema (output schema can differ from input)
+    /// - Change the number of rows (filter, aggregate, expand)
+    /// - Maintain state across all rows in a partition
+    ///
+    /// # Arguments
+    /// * `output_schema` - The output schema (may differ from input schema)
+    /// * `func_name` - A description of the function being applied (for display purposes)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let plan = LogicalPlanBuilder::from(input_plan)
+    ///     .map_partition(output_schema, "my_transform".to_string())?
+    ///     .build()?;
+    /// ```
+    pub fn map_partition(
+        self,
+        output_schema: DFSchemaRef,
+        func_name: String,
+    ) -> Result<Self> {
+        Ok(Self::new(LogicalPlan::MapPartition(MapPartition::try_new(
+            self.plan,
+            output_schema,
+            func_name,
+        )?)))
     }
 
     /// Apply an alias

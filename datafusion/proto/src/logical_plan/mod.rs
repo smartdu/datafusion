@@ -1902,6 +1902,12 @@ impl AsLogicalPlan for LogicalPlanNode {
                     ))),
                 })
             }
+            LogicalPlan::MapPartition(_) => {
+                // MapPartition contains a user-defined function that cannot be serialized
+                internal_err!(
+                    "MapPartition node cannot be serialized because it contains a user-defined function"
+                )
+            }
         }
     }
 }

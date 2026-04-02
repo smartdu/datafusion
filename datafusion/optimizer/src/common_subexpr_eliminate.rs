@@ -574,6 +574,7 @@ impl OptimizerRule for CommonSubexprEliminate {
             | LogicalPlan::Subquery(_)
             | LogicalPlan::SubqueryAlias(_)
             | LogicalPlan::Limit(_)
+            | LogicalPlan::MapPartition(_)
             | LogicalPlan::Ddl(_)
             | LogicalPlan::Explain(_)
             | LogicalPlan::Analyze(_)

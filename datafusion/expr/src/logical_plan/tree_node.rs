@@ -40,9 +40,9 @@
 use crate::{
     Aggregate, Analyze, CreateMemoryTable, CreateView, DdlStatement, Distinct,
     DistinctOn, DmlStatement, Execute, Explain, Expr, Extension, Filter, Join, Limit,
-    LogicalPlan, Partitioning, Prepare, Projection, RecursiveQuery, Repartition, Sort,
-    Statement, Subquery, SubqueryAlias, TableScan, Union, Unnest, UserDefinedLogicalNode,
-    Values, Window, dml::CopyTo,
+    LogicalPlan, MapPartition, Partitioning, Prepare, Projection, RecursiveQuery,
+    Repartition, Sort, Statement, Subquery, SubqueryAlias, TableScan, Union, Unnest,
+    UserDefinedLogicalNode, Values, Window, dml::CopyTo,
 };
 use datafusion_common::tree_node::TreeNodeRefContainer;
 
@@ -150,6 +150,17 @@ impl TreeNode for LogicalPlan {
             LogicalPlan::Limit(Limit { skip, fetch, input }) => input
                 .map_elements(f)?
                 .update_data(|input| LogicalPlan::Limit(Limit { skip, fetch, input })),
+            LogicalPlan::MapPartition(MapPartition {
+                input,
+                output_schema,
+                func_name,
+            }) => input.map_elements(f)?.update_data(|input| {
+                LogicalPlan::MapPartition(MapPartition {
+                    input,
+                    output_schema,
+                    func_name,
+                })
+            }),
             LogicalPlan::Subquery(Subquery {
                 subquery,
                 outer_ref_columns,
@@ -475,6 +486,7 @@ impl LogicalPlan {
             | LogicalPlan::Dml(_)
             | LogicalPlan::Ddl(_)
             | LogicalPlan::Copy(_)
+            | LogicalPlan::MapPartition(_)
             | LogicalPlan::DescribeTable(_) => Ok(TreeNodeRecursion::Continue),
         }
     }
@@ -657,6 +669,7 @@ impl LogicalPlan {
             | LogicalPlan::Dml(_)
             | LogicalPlan::Ddl(_)
             | LogicalPlan::Copy(_)
+            | LogicalPlan::MapPartition(_)
             | LogicalPlan::DescribeTable(_) => Transformed::no(self),
         })
     }

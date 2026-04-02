@@ -22,9 +22,9 @@ use std::fmt;
 
 use crate::{
     Aggregate, DescribeTable, Distinct, DistinctOn, DmlStatement, Expr, Filter, Join,
-    Limit, LogicalPlan, Partitioning, Projection, RecursiveQuery, Repartition, Sort,
-    Subquery, SubqueryAlias, TableProviderFilterPushDown, TableScan, Unnest, Values,
-    Window, expr_vec_fmt,
+    Limit, LogicalPlan, MapPartition, Partitioning, Projection, RecursiveQuery,
+    Repartition, Sort, Subquery, SubqueryAlias, TableProviderFilterPushDown, TableScan,
+    Unnest, Values, Window, expr_vec_fmt,
 };
 
 use crate::dml::CopyTo;
@@ -632,6 +632,12 @@ impl<'a, 'b> PgJsonVisitor<'a, 'b> {
                     "Node Type": "Unnest",
                     "ListColumn": expr_vec_fmt!(list_type_columns),
                     "StructColumn": expr_vec_fmt!(struct_type_columns),
+                })
+            }
+            LogicalPlan::MapPartition(MapPartition { func_name, .. }) => {
+                json!({
+                    "Node Type": "MapPartition",
+                    "Function": func_name,
                 })
             }
         }

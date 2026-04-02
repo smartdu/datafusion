@@ -256,6 +256,10 @@ pub enum LogicalPlan {
     SubqueryAlias(SubqueryAlias),
     /// Skip some number of rows, and then fetch some number of rows.
     Limit(Limit),
+    /// Applies a user-defined function to each partition of data.
+    /// This is similar to Spark's `mapPartitions` - it allows processing
+    /// all data in a partition at once with custom logic.
+    MapPartition(MapPartition),
     /// A DataFusion [`Statement`] such as `SET VARIABLE` or `START TRANSACTION`
     Statement(Statement),
     /// Values expression. See
@@ -336,6 +340,9 @@ impl LogicalPlan {
             LogicalPlan::Join(Join { schema, .. }) => schema,
             LogicalPlan::Repartition(Repartition { input, .. }) => input.schema(),
             LogicalPlan::Limit(Limit { input, .. }) => input.schema(),
+            LogicalPlan::MapPartition(MapPartition { output_schema, .. }) => {
+                output_schema
+            }
             LogicalPlan::Statement(statement) => statement.schema(),
             LogicalPlan::Subquery(Subquery { subquery, .. }) => subquery.schema(),
             LogicalPlan::SubqueryAlias(SubqueryAlias { schema, .. }) => schema,
@@ -456,6 +463,7 @@ impl LogicalPlan {
             LogicalPlan::Sort(Sort { input, .. }) => vec![input],
             LogicalPlan::Join(Join { left, right, .. }) => vec![left, right],
             LogicalPlan::Limit(Limit { input, .. }) => vec![input],
+            LogicalPlan::MapPartition(MapPartition { input, .. }) => vec![input],
             LogicalPlan::Subquery(Subquery { subquery, .. }) => vec![subquery],
             LogicalPlan::SubqueryAlias(SubqueryAlias { input, .. }) => vec![input],
             LogicalPlan::Extension(extension) => extension.node.inputs(),
@@ -542,6 +550,7 @@ impl LogicalPlan {
             | LogicalPlan::Sort(Sort { input, .. })
             | LogicalPlan::Limit(Limit { input, .. })
             | LogicalPlan::Repartition(Repartition { input, .. })
+            | LogicalPlan::MapPartition(MapPartition { input, .. })
             | LogicalPlan::Window(Window { input, .. }) => input.head_output_expr(),
             LogicalPlan::Join(Join {
                 left,
@@ -693,6 +702,7 @@ impl LogicalPlan {
                 schema: _,
             }) => SubqueryAlias::try_new(input, alias).map(LogicalPlan::SubqueryAlias),
             LogicalPlan::Limit(_) => Ok(self),
+            LogicalPlan::MapPartition(_) => Ok(self),
             LogicalPlan::Ddl(_) => Ok(self),
             LogicalPlan::Extension(Extension { node }) => {
                 // todo make an API that does not require cloning
@@ -1151,6 +1161,19 @@ impl LogicalPlan {
                     unnest_with_options(input, columns.clone(), options.clone())?;
                 Ok(new_plan)
             }
+            LogicalPlan::MapPartition(MapPartition {
+                output_schema,
+                func_name,
+                ..
+            }) => {
+                self.assert_no_expressions(expr)?;
+                let input = self.only_input(inputs)?;
+                Ok(LogicalPlan::MapPartition(MapPartition {
+                    input: Arc::new(input),
+                    output_schema: Arc::clone(output_schema),
+                    func_name: func_name.clone(),
+                }))
+            }
         }
     }
 
@@ -1381,6 +1404,7 @@ impl LogicalPlan {
             ) => input.max_rows(),
             LogicalPlan::Values(v) => Some(v.values.len()),
             LogicalPlan::Unnest(_) => None,
+            LogicalPlan::MapPartition(_) => None,
             LogicalPlan::Ddl(_)
             | LogicalPlan::Explain(_)
             | LogicalPlan::Analyze(_)
@@ -1427,6 +1451,7 @@ impl LogicalPlan {
             LogicalPlan::DescribeTable(_) => Ok(None),
             LogicalPlan::Unnest(_) => Ok(None),
             LogicalPlan::RecursiveQuery(_) => Ok(None),
+            LogicalPlan::MapPartition(_) => Ok(None),
         }
     }
 
@@ -1465,6 +1490,7 @@ impl LogicalPlan {
             LogicalPlan::DescribeTable(_) => Ok(None),
             LogicalPlan::Unnest(_) => Ok(None),
             LogicalPlan::RecursiveQuery(_) => Ok(None),
+            LogicalPlan::MapPartition(_) => Ok(None),
         }
     }
 
@@ -2180,6 +2206,9 @@ impl LogicalPlan {
                             expr_vec_fmt!(list_type_columns),
                             expr_vec_fmt!(struct_type_columns)
                         )
+                    }
+                    LogicalPlan::MapPartition(MapPartition { func_name, .. }) => {
+                        write!(f, "MapPartition: fn={func_name}")
                     }
                 }
             }
@@ -3409,6 +3438,48 @@ impl Limit {
             },
             None => Ok(FetchType::Literal(None)),
         }
+    }
+}
+
+/// MapPartition applies a user-defined function to each partition of data.
+///
+/// This is similar to Spark's `mapPartitions` - it allows processing all data
+/// in a partition at once, enabling custom processing logic that may:
+/// - Change the schema (output schema can differ from input)
+/// - Change the number of rows (filter, aggregate, expand)
+/// - Maintain state across all rows in a partition
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MapPartition {
+    /// The input logical plan
+    pub input: Arc<LogicalPlan>,
+    /// The output schema (may differ from input schema)
+    pub output_schema: DFSchemaRef,
+    /// A description of the function being applied (for display purposes)
+    pub func_name: String,
+}
+
+// Manual implementation needed because of `output_schema` field. Comparison excludes this field.
+impl PartialOrd for MapPartition {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        (&self.input, &self.func_name)
+            .partial_cmp(&(&other.input, &other.func_name))
+            // TODO (https://github.com/apache/datafusion/issues/17477) avoid recomparing all fields
+            .filter(|cmp| *cmp != Ordering::Equal || self == other)
+    }
+}
+
+impl MapPartition {
+    /// Create a new MapPartition logical plan node
+    pub fn try_new(
+        input: Arc<LogicalPlan>,
+        output_schema: DFSchemaRef,
+        func_name: String,
+    ) -> Result<Self> {
+        Ok(Self {
+            input,
+            output_schema,
+            func_name,
+        })
     }
 }
 

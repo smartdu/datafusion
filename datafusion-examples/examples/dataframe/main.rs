@@ -21,7 +21,7 @@
 //!
 //! ## Usage
 //! ```bash
-//! cargo run --example dataframe -- [all|dataframe|deserialize_to_struct|cache_factory]
+//! cargo run --example dataframe -- [all|dataframe|deserialize_to_struct|cache_factory|map_partition]
 //! ```
 //!
 //! Each subcommand runs a corresponding example:
@@ -35,10 +35,14 @@
 //!
 //! - `deserialize_to_struct`
 //!   (file: deserialize_to_struct.rs, desc: Convert Arrow arrays into Rust structs)
+//!
+//! - `map_partition`
+//!   (file: map_partition.rs, desc: Apply custom processing to each partition of data)
 
 mod cache_factory;
 mod dataframe;
 mod deserialize_to_struct;
+mod map_partition;
 
 use datafusion::error::{DataFusionError, Result};
 use strum::{IntoEnumIterator, VariantNames};
@@ -51,6 +55,7 @@ enum ExampleKind {
     Dataframe,
     DeserializeToStruct,
     CacheFactory,
+    MapPartition,
 }
 
 impl ExampleKind {
@@ -76,6 +81,9 @@ impl ExampleKind {
             }
             ExampleKind::CacheFactory => {
                 cache_factory::cache_dataframe_with_custom_logic().await?;
+            }
+            ExampleKind::MapPartition => {
+                map_partition::main().await?;
             }
         }
         Ok(())

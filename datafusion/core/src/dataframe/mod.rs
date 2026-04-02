@@ -37,8 +37,8 @@ use crate::logical_expr::{
     Partitioning, TableType, col, ident,
 };
 use crate::physical_plan::{
-    ExecutionPlan, SendableRecordBatchStream, collect, collect_partitioned,
-    execute_stream, execute_stream_partitioned,
+    ExecutionPlan, ExecutionPlanProperties, SendableRecordBatchStream, collect,
+    collect_partitioned, execute_stream, execute_stream_partitioned,
 };
 use crate::prelude::SessionContext;
 use std::any::Any;
@@ -728,6 +728,94 @@ impl DataFrame {
             plan,
             projection_requires_validation: self.projection_requires_validation,
         })
+    }
+
+    /// Apply a user-defined function to each partition of this DataFrame.
+    ///
+    /// This is similar to Spark's `mapPartitions` - it allows processing all data
+    /// in a partition at once, enabling custom processing logic that may:
+    /// - Change the schema (output schema can differ from input)
+    /// - Change the number of rows (filter, aggregate, expand)
+    /// - Maintain state across all rows in a partition
+    ///
+    /// # Arguments
+    /// * `func` - A function that takes (partition_index, Vec<RecordBatch>)
+    ///   and returns Result<Vec<RecordBatch>>
+    /// * `output_schema` - The output schema (required since input/output may differ)
+    ///
+    /// # Example
+    /// ```ignore
+    /// let df = ctx.read_csv("data.csv", CsvReadOptions::new()).await?;
+    /// let output_schema = Arc::new(Schema::new(vec![
+    ///     Field::new("a", DataType::Int32, false),
+    ///     Field::new("b_doubled", DataType::Int32, false),
+    /// ]));
+    /// let df = df.map_partition(
+    ///     |idx, batches| {
+    ///         // Custom processing of all batches in this partition
+    ///         Ok(processed_batches)
+    ///     },
+    ///     output_schema,
+    /// ).await?;
+    /// ```
+    pub async fn map_partition<F>(
+        self,
+        func: F,
+        output_schema: SchemaRef,
+    ) -> Result<DataFrame>
+    where
+        F: Fn(usize, Vec<RecordBatch>) -> Result<Vec<RecordBatch>>
+            + Send
+            + Sync
+            + 'static,
+    {
+        use crate::datasource::MemTable;
+        use datafusion_physical_plan::Partitioning;
+        use datafusion_physical_plan::map_partition::{MapPartitionExec, MapPartitionFn};
+        use datafusion_physical_plan::repartition::RepartitionExec;
+
+        // Create the physical plan for the input
+        let mut input_plan = self.session_state.create_physical_plan(&self.plan).await?;
+
+        // Check if the logical plan has a Repartition with RoundRobinBatch at the top level
+        // If so, we need to ensure the physical plan has the same partition count
+        // because the optimizer may have removed it
+        if let LogicalPlan::Repartition(repartition) = &self.plan
+            && let crate::logical_expr::Partitioning::RoundRobinBatch(n) =
+                repartition.partitioning_scheme
+        {
+            let current_partitions = input_plan.output_partitioning().partition_count();
+            if current_partitions < n {
+                // Add a RepartitionExec to ensure we have the desired partition count
+                input_plan = Arc::new(RepartitionExec::try_new(
+                    input_plan,
+                    Partitioning::RoundRobinBatch(n),
+                )?);
+            }
+        }
+
+        // Create the MapPartitionExec
+        let func: MapPartitionFn = Arc::new(func);
+        let map_partition_exec =
+            MapPartitionExec::try_new(input_plan, Arc::clone(&output_schema), func)?;
+
+        // Execute and collect results per partition (preserving partition structure)
+        let task_ctx = Arc::new(self.task_ctx());
+        let partitions =
+            collect_partitioned(Arc::new(map_partition_exec), task_ctx).await?;
+
+        // Create a new DataFrame from the results using LogicalPlanBuilder
+        // This ensures proper schema handling without qualifier issues
+        let provider = MemTable::try_new(Arc::clone(&output_schema), partitions)?;
+        Ok(DataFrame::new(
+            (*self.session_state).clone(),
+            LogicalPlanBuilder::scan(
+                UNNAMED_TABLE,
+                provider_as_source(Arc::new(provider)),
+                None,
+            )?
+            .build()?,
+        ))
     }
 
     /// Calculate the union of two [`DataFrame`]s, preserving duplicate rows.

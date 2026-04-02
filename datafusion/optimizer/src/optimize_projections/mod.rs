@@ -317,7 +317,8 @@ fn optimize_projections(
         | LogicalPlan::Analyze(_)
         | LogicalPlan::Subquery(_)
         | LogicalPlan::Statement(_)
-        | LogicalPlan::Distinct(Distinct::All(_)) => {
+        | LogicalPlan::Distinct(Distinct::All(_))
+        | LogicalPlan::MapPartition(_) => {
             // These plans require all their fields, and their children should
             // be treated as final plans -- otherwise, we may have schema a
             // mismatch.

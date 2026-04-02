@@ -1708,6 +1708,15 @@ impl DefaultPhysicalPlanner {
 
             // N Children
             LogicalPlan::Union(_) => UnionExec::try_new(children.vec())?,
+            LogicalPlan::MapPartition(_) => {
+                // MapPartition requires a user function that is stored at the DataFrame level
+                // Users should use DataFrame::map_partition API instead of building
+                // LogicalPlan::MapPartition directly
+                return not_impl_err!(
+                    "MapPartition node must be created through DataFrame::map_partition API. \
+                     The user function cannot be serialized through the logical plan."
+                );
+            }
             LogicalPlan::Extension(Extension { node }) => {
                 let mut maybe_plan = None;
                 let children = children.vec();
@@ -2142,7 +2151,8 @@ fn extract_dml_filters(
             | LogicalPlan::Ddl(_)
             | LogicalPlan::Copy(_)
             | LogicalPlan::Unnest(_)
-            | LogicalPlan::RecursiveQuery(_) => {
+            | LogicalPlan::RecursiveQuery(_)
+            | LogicalPlan::MapPartition(_) => {
                 // No filters to extract from leaf/meta plans
             }
             // Plans with inputs (may contain filters in children)
