@@ -484,10 +484,11 @@ mod tests {
                         .downcast_ref::<Int32Array>()
                         .unwrap();
                     let original: Vec<_> = array.iter().collect();
-                    println!("  Input values: {:?}", original);
+                    println!("  Input values: {original:?}");
                     let doubled: Int32Array =
                         array.iter().map(|v| v.map(|x| x * 2)).collect();
-                    println!("  Output values: {:?}", doubled.iter().collect::<Vec<_>>());
+                    let doubled_collected: Vec<_> = doubled.iter().collect();
+                    println!("  Output values: {doubled_collected:?}");
                     results.push(
                         RecordBatch::try_new(
                             Arc::new(test_schema()),
@@ -557,7 +558,7 @@ mod tests {
                         "  Output values (odd only): {:?}",
                         filtered.iter().collect::<Vec<_>>()
                     );
-                    if filtered.len() > 0 {
+                    if !filtered.is_empty() {
                         results.push(
                             RecordBatch::try_new(
                                 Arc::new(test_schema()),
