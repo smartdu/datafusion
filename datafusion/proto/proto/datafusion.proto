@@ -62,6 +62,7 @@ message LogicalPlanNode {
     RecursiveQueryNode recursive_query = 31;
     CteWorkTableScanNode cte_work_table_scan = 32;
     DmlNode dml = 33;
+    LogicalMapPartitionNode map_partition = 34;
   }
 }
 
@@ -337,6 +338,16 @@ message RecursionUnnestOption {
   datafusion_common.Column output_column = 1;
   datafusion_common.Column input_column = 2;
   uint32 depth = 3;
+}
+
+// Logical MapPartition node for SO-based distributed computation
+message LogicalMapPartitionNode {
+  LogicalPlanNode input = 1;
+  datafusion_common.DfSchema output_schema = 2;
+  string func_name = 3;
+  // SO function configuration for distributed execution
+  // Only set when the function can be serialized
+  SoFunction so_function = 4;
 }
 
 message UnionNode {
@@ -775,6 +786,7 @@ message PhysicalPlanNode {
     AsyncFuncExecNode async_func = 36;
     BufferExecNode buffer = 37;
     ArrowScanExecNode arrow_scan = 38;
+    MapPartitionExecNode map_partition = 39;
   }
 }
 
@@ -1139,6 +1151,22 @@ message MemoryScanExecNode {
   repeated PhysicalSortExprNodeCollection sort_information = 4;
   bool show_sizes = 5;
   optional uint32 fetch = 6;
+}
+
+// SO function for MapPartitionExec
+message SoFunction {
+  string so_path = 1;
+  string function_name = 2;
+}
+
+message MapPartitionExecNode {
+  PhysicalPlanNode input = 1;
+  datafusion_common.Schema output_schema = 2;
+  oneof function {
+    // Reserved for closure function (cannot be serialized)
+    // bytes closure = 3;
+    SoFunction so_function = 4;
+  }
 }
 
 message CooperativeExecNode {

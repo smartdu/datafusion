@@ -59,7 +59,7 @@ use crate::schema_equivalence::schema_satisfied_by;
 
 use arrow::array::{RecordBatch, builder::StringBuilder};
 use arrow::compute::SortOptions;
-use arrow::datatypes::Schema;
+use arrow::datatypes::{Schema, SchemaRef};
 use arrow_schema::Field;
 use datafusion_catalog::ScanArgs;
 use datafusion_common::Column;
@@ -99,6 +99,7 @@ use datafusion_physical_optimizer::PhysicalOptimizerRule;
 use datafusion_physical_plan::empty::EmptyExec;
 use datafusion_physical_plan::execution_plan::InvariantLevel;
 use datafusion_physical_plan::joins::PiecewiseMergeJoinExec;
+use datafusion_physical_plan::map_partition::MapPartitionExec;
 use datafusion_physical_plan::placeholder_row::PlaceholderRowExec;
 use datafusion_physical_plan::recursive_query::RecursiveQueryExec;
 use datafusion_physical_plan::unnest::ListUnnest;
@@ -1708,14 +1709,27 @@ impl DefaultPhysicalPlanner {
 
             // N Children
             LogicalPlan::Union(_) => UnionExec::try_new(children.vec())?,
-            LogicalPlan::MapPartition(_) => {
-                // MapPartition requires a user function that is stored at the DataFrame level
-                // Users should use DataFrame::map_partition API instead of building
-                // LogicalPlan::MapPartition directly
-                return not_impl_err!(
-                    "MapPartition node must be created through DataFrame::map_partition API. \
-                     The user function cannot be serialized through the logical plan."
-                );
+            LogicalPlan::MapPartition(map_partition) => {
+                // Check if SO config is provided for distributed execution
+                if let Some(so_config) = &map_partition.so_config {
+                    // SO-based map_partition can be serialized and executed remotely
+                    let input = children.one()?;
+                    let output_schema: SchemaRef = map_partition.output_schema.as_ref().clone().into();
+                    Arc::new(MapPartitionExec::try_new_with_so(
+                        input,
+                        output_schema,
+                        so_config.so_path.clone(),
+                        so_config.function_name.clone(),
+                    )?)
+                } else {
+                    // MapPartition requires a user function that is stored at the DataFrame level
+                    // Users should use DataFrame::map_partition API instead of building
+                    // LogicalPlan::MapPartition directly
+                    return not_impl_err!(
+                        "MapPartition node must be created through DataFrame::map_partition API. \
+                         The user function cannot be serialized through the logical plan."
+                    );
+                }
             }
             LogicalPlan::Extension(Extension { node }) => {
                 let mut maybe_plan = None;

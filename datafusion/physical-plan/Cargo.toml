@@ -47,6 +47,8 @@ tokio_coop_fallback = []
 name = "datafusion_physical_plan"
 
 [dependencies]
+libloading = "0.8"
+lazy_static = "1.4"
 arrow = { workspace = true }
 arrow-ord = { workspace = true }
 arrow-schema = { workspace = true }

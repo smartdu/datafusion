@@ -12794,6 +12794,151 @@ impl<'de> serde::Deserialize<'de> for LogicalExtensionNode {
         deserializer.deserialize_struct("datafusion.LogicalExtensionNode", FIELDS, GeneratedVisitor)
     }
 }
+impl serde::Serialize for LogicalMapPartitionNode {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.input.is_some() {
+            len += 1;
+        }
+        if self.output_schema.is_some() {
+            len += 1;
+        }
+        if !self.func_name.is_empty() {
+            len += 1;
+        }
+        if self.so_function.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("datafusion.LogicalMapPartitionNode", len)?;
+        if let Some(v) = self.input.as_ref() {
+            struct_ser.serialize_field("input", v)?;
+        }
+        if let Some(v) = self.output_schema.as_ref() {
+            struct_ser.serialize_field("outputSchema", v)?;
+        }
+        if !self.func_name.is_empty() {
+            struct_ser.serialize_field("funcName", &self.func_name)?;
+        }
+        if let Some(v) = self.so_function.as_ref() {
+            struct_ser.serialize_field("soFunction", v)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for LogicalMapPartitionNode {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "input",
+            "output_schema",
+            "outputSchema",
+            "func_name",
+            "funcName",
+            "so_function",
+            "soFunction",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Input,
+            OutputSchema,
+            FuncName,
+            SoFunction,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl serde::de::Visitor<'_> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "input" => Ok(GeneratedField::Input),
+                            "outputSchema" | "output_schema" => Ok(GeneratedField::OutputSchema),
+                            "funcName" | "func_name" => Ok(GeneratedField::FuncName),
+                            "soFunction" | "so_function" => Ok(GeneratedField::SoFunction),
+                            _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = LogicalMapPartitionNode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct datafusion.LogicalMapPartitionNode")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<LogicalMapPartitionNode, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut input__ = None;
+                let mut output_schema__ = None;
+                let mut func_name__ = None;
+                let mut so_function__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Input => {
+                            if input__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("input"));
+                            }
+                            input__ = map_.next_value()?;
+                        }
+                        GeneratedField::OutputSchema => {
+                            if output_schema__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("outputSchema"));
+                            }
+                            output_schema__ = map_.next_value()?;
+                        }
+                        GeneratedField::FuncName => {
+                            if func_name__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("funcName"));
+                            }
+                            func_name__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::SoFunction => {
+                            if so_function__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("soFunction"));
+                            }
+                            so_function__ = map_.next_value()?;
+                        }
+                    }
+                }
+                Ok(LogicalMapPartitionNode {
+                    input: input__,
+                    output_schema: output_schema__,
+                    func_name: func_name__.unwrap_or_default(),
+                    so_function: so_function__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("datafusion.LogicalMapPartitionNode", FIELDS, GeneratedVisitor)
+    }
+}
 impl serde::Serialize for LogicalPlanNode {
     #[allow(deprecated)]
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
@@ -12904,6 +13049,9 @@ impl serde::Serialize for LogicalPlanNode {
                 logical_plan_node::LogicalPlanType::Dml(v) => {
                     struct_ser.serialize_field("dml", v)?;
                 }
+                logical_plan_node::LogicalPlanType::MapPartition(v) => {
+                    struct_ser.serialize_field("mapPartition", v)?;
+                }
             }
         }
         struct_ser.end()
@@ -12963,6 +13111,8 @@ impl<'de> serde::Deserialize<'de> for LogicalPlanNode {
             "cte_work_table_scan",
             "cteWorkTableScan",
             "dml",
+            "map_partition",
+            "mapPartition",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -12999,6 +13149,7 @@ impl<'de> serde::Deserialize<'de> for LogicalPlanNode {
             RecursiveQuery,
             CteWorkTableScan,
             Dml,
+            MapPartition,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -13052,6 +13203,7 @@ impl<'de> serde::Deserialize<'de> for LogicalPlanNode {
                             "recursiveQuery" | "recursive_query" => Ok(GeneratedField::RecursiveQuery),
                             "cteWorkTableScan" | "cte_work_table_scan" => Ok(GeneratedField::CteWorkTableScan),
                             "dml" => Ok(GeneratedField::Dml),
+                            "mapPartition" | "map_partition" => Ok(GeneratedField::MapPartition),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -13298,6 +13450,13 @@ impl<'de> serde::Deserialize<'de> for LogicalPlanNode {
                             logical_plan_type__ = map_.next_value::<::std::option::Option<_>>()?.map(logical_plan_node::LogicalPlanType::Dml)
 ;
                         }
+                        GeneratedField::MapPartition => {
+                            if logical_plan_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("mapPartition"));
+                            }
+                            logical_plan_type__ = map_.next_value::<::std::option::Option<_>>()?.map(logical_plan_node::LogicalPlanType::MapPartition)
+;
+                        }
                     }
                 }
                 Ok(LogicalPlanNode {
@@ -13306,6 +13465,138 @@ impl<'de> serde::Deserialize<'de> for LogicalPlanNode {
             }
         }
         deserializer.deserialize_struct("datafusion.LogicalPlanNode", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for MapPartitionExecNode {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if self.input.is_some() {
+            len += 1;
+        }
+        if self.output_schema.is_some() {
+            len += 1;
+        }
+        if self.function.is_some() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("datafusion.MapPartitionExecNode", len)?;
+        if let Some(v) = self.input.as_ref() {
+            struct_ser.serialize_field("input", v)?;
+        }
+        if let Some(v) = self.output_schema.as_ref() {
+            struct_ser.serialize_field("outputSchema", v)?;
+        }
+        if let Some(v) = self.function.as_ref() {
+            match v {
+                map_partition_exec_node::Function::SoFunction(v) => {
+                    struct_ser.serialize_field("soFunction", v)?;
+                }
+            }
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for MapPartitionExecNode {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "input",
+            "output_schema",
+            "outputSchema",
+            "so_function",
+            "soFunction",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            Input,
+            OutputSchema,
+            SoFunction,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl serde::de::Visitor<'_> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "input" => Ok(GeneratedField::Input),
+                            "outputSchema" | "output_schema" => Ok(GeneratedField::OutputSchema),
+                            "soFunction" | "so_function" => Ok(GeneratedField::SoFunction),
+                            _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = MapPartitionExecNode;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct datafusion.MapPartitionExecNode")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<MapPartitionExecNode, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut input__ = None;
+                let mut output_schema__ = None;
+                let mut function__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::Input => {
+                            if input__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("input"));
+                            }
+                            input__ = map_.next_value()?;
+                        }
+                        GeneratedField::OutputSchema => {
+                            if output_schema__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("outputSchema"));
+                            }
+                            output_schema__ = map_.next_value()?;
+                        }
+                        GeneratedField::SoFunction => {
+                            if function__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("soFunction"));
+                            }
+                            function__ = map_.next_value::<::std::option::Option<_>>()?.map(map_partition_exec_node::Function::SoFunction)
+;
+                        }
+                    }
+                }
+                Ok(MapPartitionExecNode {
+                    input: input__,
+                    output_schema: output_schema__,
+                    function: function__,
+                })
+            }
+        }
+        deserializer.deserialize_struct("datafusion.MapPartitionExecNode", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for MaybeFilter {
@@ -18104,6 +18395,9 @@ impl serde::Serialize for PhysicalPlanNode {
                 physical_plan_node::PhysicalPlanType::ArrowScan(v) => {
                     struct_ser.serialize_field("arrowScan", v)?;
                 }
+                physical_plan_node::PhysicalPlanType::MapPartition(v) => {
+                    struct_ser.serialize_field("mapPartition", v)?;
+                }
             }
         }
         struct_ser.end()
@@ -18174,6 +18468,8 @@ impl<'de> serde::Deserialize<'de> for PhysicalPlanNode {
             "buffer",
             "arrow_scan",
             "arrowScan",
+            "map_partition",
+            "mapPartition",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -18215,6 +18511,7 @@ impl<'de> serde::Deserialize<'de> for PhysicalPlanNode {
             AsyncFunc,
             Buffer,
             ArrowScan,
+            MapPartition,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -18273,6 +18570,7 @@ impl<'de> serde::Deserialize<'de> for PhysicalPlanNode {
                             "asyncFunc" | "async_func" => Ok(GeneratedField::AsyncFunc),
                             "buffer" => Ok(GeneratedField::Buffer),
                             "arrowScan" | "arrow_scan" => Ok(GeneratedField::ArrowScan),
+                            "mapPartition" | "map_partition" => Ok(GeneratedField::MapPartition),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -18552,6 +18850,13 @@ impl<'de> serde::Deserialize<'de> for PhysicalPlanNode {
                                 return Err(serde::de::Error::duplicate_field("arrowScan"));
                             }
                             physical_plan_type__ = map_.next_value::<::std::option::Option<_>>()?.map(physical_plan_node::PhysicalPlanType::ArrowScan)
+;
+                        }
+                        GeneratedField::MapPartition => {
+                            if physical_plan_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("mapPartition"));
+                            }
+                            physical_plan_type__ = map_.next_value::<::std::option::Option<_>>()?.map(physical_plan_node::PhysicalPlanType::MapPartition)
 ;
                         }
                     }
@@ -21797,6 +22102,116 @@ impl<'de> serde::Deserialize<'de> for SimilarToNode {
             }
         }
         deserializer.deserialize_struct("datafusion.SimilarToNode", FIELDS, GeneratedVisitor)
+    }
+}
+impl serde::Serialize for SoFunction {
+    #[allow(deprecated)]
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut len = 0;
+        if !self.so_path.is_empty() {
+            len += 1;
+        }
+        if !self.function_name.is_empty() {
+            len += 1;
+        }
+        let mut struct_ser = serializer.serialize_struct("datafusion.SoFunction", len)?;
+        if !self.so_path.is_empty() {
+            struct_ser.serialize_field("soPath", &self.so_path)?;
+        }
+        if !self.function_name.is_empty() {
+            struct_ser.serialize_field("functionName", &self.function_name)?;
+        }
+        struct_ser.end()
+    }
+}
+impl<'de> serde::Deserialize<'de> for SoFunction {
+    #[allow(deprecated)]
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        const FIELDS: &[&str] = &[
+            "so_path",
+            "soPath",
+            "function_name",
+            "functionName",
+        ];
+
+        #[allow(clippy::enum_variant_names)]
+        enum GeneratedField {
+            SoPath,
+            FunctionName,
+        }
+        impl<'de> serde::Deserialize<'de> for GeneratedField {
+            fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
+            where
+                D: serde::Deserializer<'de>,
+            {
+                struct GeneratedVisitor;
+
+                impl serde::de::Visitor<'_> for GeneratedVisitor {
+                    type Value = GeneratedField;
+
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        write!(formatter, "expected one of: {:?}", &FIELDS)
+                    }
+
+                    #[allow(unused_variables)]
+                    fn visit_str<E>(self, value: &str) -> std::result::Result<GeneratedField, E>
+                    where
+                        E: serde::de::Error,
+                    {
+                        match value {
+                            "soPath" | "so_path" => Ok(GeneratedField::SoPath),
+                            "functionName" | "function_name" => Ok(GeneratedField::FunctionName),
+                            _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
+                        }
+                    }
+                }
+                deserializer.deserialize_identifier(GeneratedVisitor)
+            }
+        }
+        struct GeneratedVisitor;
+        impl<'de> serde::de::Visitor<'de> for GeneratedVisitor {
+            type Value = SoFunction;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("struct datafusion.SoFunction")
+            }
+
+            fn visit_map<V>(self, mut map_: V) -> std::result::Result<SoFunction, V::Error>
+                where
+                    V: serde::de::MapAccess<'de>,
+            {
+                let mut so_path__ = None;
+                let mut function_name__ = None;
+                while let Some(k) = map_.next_key()? {
+                    match k {
+                        GeneratedField::SoPath => {
+                            if so_path__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("soPath"));
+                            }
+                            so_path__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::FunctionName => {
+                            if function_name__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("functionName"));
+                            }
+                            function_name__ = Some(map_.next_value()?);
+                        }
+                    }
+                }
+                Ok(SoFunction {
+                    so_path: so_path__.unwrap_or_default(),
+                    function_name: function_name__.unwrap_or_default(),
+                })
+            }
+        }
+        deserializer.deserialize_struct("datafusion.SoFunction", FIELDS, GeneratedVisitor)
     }
 }
 impl serde::Serialize for SortExecNode {

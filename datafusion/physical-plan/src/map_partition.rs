@@ -45,15 +45,38 @@ use log::trace;
 pub type MapPartitionFn =
     Arc<dyn Fn(usize, Vec<RecordBatch>) -> Result<Vec<RecordBatch>> + Send + Sync>;
 
+/// SO function definition for map_partition
+/// Contains path to SO library and function name to call
+#[derive(Debug, Clone)]
+pub struct SoFunction {
+    /// Path to the SO library file
+    pub so_path: String,
+    /// Name of the function to call in the SO library
+    pub function_name: String,
+}
+
+/// MapPartition function: either a closure or a SO function
+#[derive(Clone)]
+enum MapPartitionFunction {
+    /// Closure function (existing)
+    Closure(MapPartitionFn),
+    /// SO library function (new)
+    So(SoFunction),
+}
+
 /// MapPartitionExec applies a user-defined function to each partition of data.
 ///
 /// This is similar to Spark's `mapPartitions` - it allows processing all data
 /// in a partition at once, enabling custom processing logic that may:
 /// - Change the schema (output schema can differ from input)
 /// - Change the number of rows (filter, aggregate, expand)
-/// - Maintain state across all rows in a partition
+/// - Maintain state across all rows in a partition)
 ///
-/// # Example
+/// Supports two types of functions:
+/// 1. Closure function (in-process)
+/// 2. SO library function (for distributed execution via Ballista)
+///
+/// # Example (Closure)
 /// ```ignore
 /// let exec = MapPartitionExec::try_new(
 ///     input_exec,
@@ -64,11 +87,21 @@ pub type MapPartitionFn =
 ///     }),
 /// )?;
 /// ```
+///
+/// # Example (SO)
+/// ```ignore
+/// let exec = MapPartitionExec::try_new_with_so(
+///     input_exec,
+///     Arc::new(output_schema),
+///     "/path/to/libmy_transform.so".to_string(),
+///     "transform_partition".to_string(),
+/// )?;
+/// ```
 pub struct MapPartitionExec {
     /// Input execution plan
     input: Arc<dyn ExecutionPlan>,
-    /// User-defined function to apply to each partition
-    func: MapPartitionFn,
+    /// User-defined function (closure or SO)
+    func: MapPartitionFunction,
     /// Output schema (may differ from input schema)
     output_schema: SchemaRef,
     /// Execution metrics
@@ -88,7 +121,7 @@ impl fmt::Debug for MapPartitionExec {
 }
 
 impl MapPartitionExec {
-    /// Create a new MapPartitionExec
+    /// Create a new MapPartitionExec with a closure function
     pub fn try_new(
         input: Arc<dyn ExecutionPlan>,
         output_schema: SchemaRef,
@@ -98,7 +131,31 @@ impl MapPartitionExec {
 
         Ok(Self {
             input,
-            func,
+            func: MapPartitionFunction::Closure(func),
+            output_schema,
+            metrics: ExecutionPlanMetricsSet::new(),
+            cache: Arc::new(cache),
+        })
+    }
+
+    /// Create a new MapPartitionExec with an SO library function
+    ///
+    /// This is used for distributed execution via Ballista where the function
+    /// is loaded from a shared library at runtime.
+    pub fn try_new_with_so(
+        input: Arc<dyn ExecutionPlan>,
+        output_schema: SchemaRef,
+        so_path: String,
+        function_name: String,
+    ) -> Result<Self> {
+        let cache = Self::compute_properties(&input, Arc::clone(&output_schema));
+
+        Ok(Self {
+            input,
+            func: MapPartitionFunction::So(SoFunction {
+                so_path,
+                function_name,
+            }),
             output_schema,
             metrics: ExecutionPlanMetricsSet::new(),
             cache: Arc::new(cache),
@@ -113,6 +170,19 @@ impl MapPartitionExec {
     /// Get the output schema
     pub fn output_schema(&self) -> &SchemaRef {
         &self.output_schema
+    }
+
+    /// Get the SO function if this is an SO-based map partition
+    pub fn so_function(&self) -> Option<&SoFunction> {
+        match &self.func {
+            MapPartitionFunction::So(so) => Some(so),
+            MapPartitionFunction::Closure(_) => None,
+        }
+    }
+
+    /// Check if this is an SO-based map partition
+    pub fn is_so(&self) -> bool {
+        matches!(self.func, MapPartitionFunction::So(_))
     }
 
     fn compute_properties(
@@ -147,7 +217,7 @@ impl MapPartitionExec {
 
         Self {
             input: new_input,
-            func: Arc::clone(&self.func),
+            func: self.func.clone(),
             output_schema: Arc::clone(&self.output_schema),
             metrics: ExecutionPlanMetricsSet::new(),
             cache,
@@ -233,9 +303,52 @@ impl ExecutionPlan for MapPartitionExec {
     ) -> Result<SendableRecordBatchStream> {
         trace!("Start MapPartitionExec::execute for partition {partition}");
 
-        let input_stream = self.input.execute(partition, context)?;
+        let input_stream = self.input.execute(partition, context.clone())?;
         let metrics = MapPartitionMetrics::new(&self.metrics, partition);
-        let func = Arc::clone(&self.func);
+
+        // Get output schema for IPC deserialization
+        let output_schema = Arc::clone(&self.output_schema);
+
+        // Create the actual function to use based on type
+        let func: MapPartitionFn = match &self.func {
+            MapPartitionFunction::Closure(f) => Arc::clone(f),
+            MapPartitionFunction::So(so_func) => {
+                // For SO functions, load the library and create a wrapper closure
+                // This uses the SO loader module to dynamically load the function
+                let so_path = so_func.so_path.clone();
+                let fn_name = so_func.function_name.clone();
+
+                Arc::new(move |partition_idx, batches| {
+                    // Load the SO library and get the function
+                    // Use the global SO loader for caching
+                    let loader = &super::so_loader::GLOBAL_SO_LOADER;
+                    
+                    let so_func = match loader.load_function(&so_path, &fn_name) {
+                        Ok(f) => f,
+                        Err(e) => return Err(e),
+                    };
+
+                    // Serialize input RecordBatches to Arrow IPC format
+                    let input_ipc = match super::so_loader::serialize_batches_to_ipc(&batches) {
+                        Ok(data) => data,
+                        Err(e) => return Err(e),
+                    };
+
+                    // Call the SO function with IPC data
+                    let output_ipc = match super::so_loader::execute_so_function(
+                        so_func,
+                        partition_idx as i32,
+                        &input_ipc,
+                    ) {
+                        Ok(data) => data,
+                        Err(e) => return Err(e),
+                    };
+
+                    // Deserialize output IPC data back to RecordBatches
+                    super::so_loader::deserialize_batches_from_ipc(&output_ipc, Arc::clone(&output_schema))
+                })
+            }
+        };
 
         Ok(Box::pin(MapPartitionExecStream {
             input: input_stream,

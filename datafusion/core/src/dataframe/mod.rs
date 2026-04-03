@@ -52,7 +52,7 @@ use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
 use arrow_schema::FieldRef;
 use datafusion_common::config::{CsvOptions, JsonOptions};
 use datafusion_common::{
-    Column, DFSchema, DataFusionError, ParamValues, ScalarValue, SchemaError,
+    Column, DFSchema, DFSchemaRef, DataFusionError, ParamValues, ScalarValue, SchemaError,
     TableReference, UnnestOptions, exec_err, internal_datafusion_err, not_impl_err,
     plan_datafusion_err, plan_err, unqualified_field_not_found,
 };
@@ -815,6 +815,57 @@ impl DataFrame {
                 None,
             )?
             .build()?,
+        ))
+    }
+
+    /// Apply a user-defined function to each partition of data using a shared library (SO).
+    ///
+    /// This is the SO-based version of `map_partition`, designed for distributed
+    /// computation scenarios where the business logic is implemented in a separate
+    /// shared library that can be loaded at runtime.
+    ///
+    /// # Arguments
+    /// * `output_schema` - Schema of the output RecordBatches
+    /// * `so_path` - Path to the SO library file
+    /// * `function_name` - Name of the function to call in the SO library
+    ///
+    /// # Example
+    /// ```ignore
+    /// let output_schema = Arc::new(Schema::new(vec![
+    ///     Field::new("id", DataType::Int32, false),
+    ///     Field::new("value_doubled", DataType::Int32, false),
+    /// ]));
+    ///
+    /// let df_result = df.map_partition_so(
+    ///     output_schema,
+    ///     "/path/to/libmy_transform.so".to_string(),
+    ///     "transform_partition".to_string(),
+    /// ).await?;
+    /// ```
+    pub async fn map_partition_so(
+        self,
+        output_schema: SchemaRef,
+        so_path: String,
+        function_name: String,
+    ) -> Result<DataFrame> {
+        use datafusion_expr::MapPartition;
+
+        // Convert output_schema (SchemaRef) to DFSchemaRef
+        let output_df_schema: DFSchemaRef = Arc::new(DFSchema::try_from(output_schema.as_ref().clone())?);
+
+        // Create the MapPartition logical node with SO configuration
+        // This enables distributed execution via Ballista
+        let map_partition = MapPartition::try_new_with_so(
+            Arc::new(self.plan),
+            output_df_schema,
+            format!("{}::{}", so_path, function_name),
+            so_path,
+            function_name,
+        )?;
+
+        Ok(DataFrame::new(
+            (*self.session_state).clone(),
+            LogicalPlan::MapPartition(map_partition),
         ))
     }
 

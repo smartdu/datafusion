@@ -65,6 +65,7 @@ members = [
     "benchmarks",
     "datafusion/macros",
     "datafusion/doc",
+    "examples/map_partition_so",
 ]
 exclude = ["dev/depcheck"]
 resolver = "2"

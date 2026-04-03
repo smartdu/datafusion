@@ -37,7 +37,7 @@ use arrow::datatypes::{DataType, Field, Schema, SchemaBuilder, SchemaRef};
 use datafusion_catalog::cte_worktable::CteWorkTable;
 use datafusion_common::file_options::file_type::FileType;
 use datafusion_common::{
-    Result, TableReference, ToDFSchema, assert_or_internal_err, context,
+    DFSchemaRef, DataFusionError, Result, TableReference, ToDFSchema, assert_or_internal_err, context,
     internal_datafusion_err, internal_err, not_impl_err, plan_err,
 };
 use datafusion_datasource::file_format::FileFormat;
@@ -1058,6 +1058,40 @@ impl AsLogicalPlan for LogicalPlanNode {
                     is_distinct: recursive_query_node.is_distinct,
                 }))
             }
+            LogicalPlanType::MapPartition(map_partition_node) => {
+                let input = map_partition_node
+                    .input
+                    .as_ref()
+                    .ok_or_else(|| internal_datafusion_err!(
+                        "Protobuf deserialization error, LogicalMapPartitionNode was missing required field input."
+                    ))?
+                    .try_into_logical_plan(ctx, extension_codec)?;
+
+                let output_schema: DFSchemaRef = map_partition_node
+                    .output_schema
+                    .clone()
+                    .ok_or_else(|| internal_datafusion_err!(
+                        "Protobuf deserialization error, LogicalMapPartitionNode was missing required field output_schema."
+                    ))?
+                    .try_into()
+                    .map_err(|e| DataFusionError::External(Box::new(e)))?;
+
+                // SO function is required for deserialization
+                let so_function = map_partition_node
+                    .so_function
+                    .as_ref()
+                    .ok_or_else(|| internal_datafusion_err!(
+                        "Protobuf deserialization error, LogicalMapPartitionNode was missing required field so_function."
+                    ))?;
+
+                Ok(LogicalPlan::MapPartition(datafusion_expr::MapPartition::try_new_with_so(
+                    Arc::new(input),
+                    output_schema,
+                    map_partition_node.func_name.clone(),
+                    so_function.so_path.clone(),
+                    so_function.function_name.clone(),
+                )?))
+            }
             LogicalPlanType::CteWorkTableScan(cte_work_table_scan_node) => {
                 let CteWorkTableScanNode { name, schema } = cte_work_table_scan_node;
                 let schema = convert_required!(*schema)?;
@@ -1902,11 +1936,36 @@ impl AsLogicalPlan for LogicalPlanNode {
                     ))),
                 })
             }
-            LogicalPlan::MapPartition(_) => {
-                // MapPartition contains a user-defined function that cannot be serialized
-                internal_err!(
-                    "MapPartition node cannot be serialized because it contains a user-defined function"
-                )
+            LogicalPlan::MapPartition(map_partition) => {
+                // MapPartition can only be serialized if it has SO function configuration
+                let Some(so_config) = &map_partition.so_config else {
+                    return internal_err!(
+                        "MapPartition node cannot be serialized because it contains a user-defined function. \
+                         Use map_partition_so() with an SO library for distributed execution."
+                    );
+                };
+
+                let input: protobuf::LogicalPlanNode =
+                    LogicalPlanNode::try_from_logical_plan(
+                        &map_partition.input,
+                        extension_codec,
+                    )?;
+                let output_schema: protobuf::DfSchema =
+                    map_partition.output_schema.as_ref().try_into()?;
+
+                Ok(protobuf::LogicalPlanNode {
+                    logical_plan_type: Some(LogicalPlanType::MapPartition(
+                        Box::new(protobuf::LogicalMapPartitionNode {
+                            input: Some(Box::new(input)),
+                            output_schema: Some(output_schema),
+                            func_name: map_partition.func_name.clone(),
+                            so_function: Some(protobuf::SoFunction {
+                                so_path: so_config.so_path.clone(),
+                                function_name: so_config.function_name.clone(),
+                            }),
+                        }),
+                    )),
+                })
             }
         }
     }

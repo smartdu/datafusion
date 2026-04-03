@@ -79,6 +79,7 @@ pub mod filter_pushdown;
 pub mod joins;
 pub mod limit;
 pub mod map_partition;
+pub mod so_loader;
 pub mod memory;
 pub mod metrics;
 pub mod placeholder_row;

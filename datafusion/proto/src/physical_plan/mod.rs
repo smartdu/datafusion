@@ -79,6 +79,7 @@ use datafusion_physical_plan::joins::{
 };
 use datafusion_physical_plan::limit::{GlobalLimitExec, LocalLimitExec};
 use datafusion_physical_plan::memory::LazyMemoryExec;
+use datafusion_physical_plan::map_partition::MapPartitionExec;
 use datafusion_physical_plan::metrics::{MetricCategory, MetricType};
 use datafusion_physical_plan::placeholder_row::PlaceholderRowExec;
 use datafusion_physical_plan::projection::{ProjectionExec, ProjectionExpr};
@@ -320,6 +321,9 @@ impl protobuf::PhysicalPlanNode {
                 ),
             PhysicalPlanType::Buffer(buffer) => {
                 self.try_into_buffer_physical_plan(buffer, ctx, codec, proto_converter)
+            }
+            PhysicalPlanType::MapPartition(map_partition) => {
+                self.try_into_map_partition_physical_plan(map_partition, ctx, codec, proto_converter)
             }
         }
     }
@@ -567,6 +571,18 @@ impl protobuf::PhysicalPlanNode {
                 codec,
                 proto_converter,
             );
+        }
+
+        if let Some(exec) = plan.downcast_ref::<datafusion_physical_plan::map_partition::MapPartitionExec>() {
+            // Only serialize if it's an SO-based MapPartition
+            if exec.is_so() {
+                return protobuf::PhysicalPlanNode::try_from_map_partition_exec(
+                    exec,
+                    codec,
+                    proto_converter,
+                );
+            }
+            // Fall through to extension codec for closure-based (will likely fail)
         }
 
         let mut buf: Vec<u8> = vec![];
@@ -2251,6 +2267,46 @@ impl protobuf::PhysicalPlanNode {
         Ok(Arc::new(BufferExec::new(input, buffer.capacity as usize)))
     }
 
+    fn try_into_map_partition_physical_plan(
+        &self,
+        map_partition: &protobuf::MapPartitionExecNode,
+        ctx: &TaskContext,
+        extension_codec: &dyn PhysicalExtensionCodec,
+        proto_converter: &dyn PhysicalProtoConverterExtension,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        let input: Arc<dyn ExecutionPlan> = into_physical_plan(&map_partition.input, ctx, extension_codec, proto_converter)?;
+
+        let output_schema = map_partition.output_schema.as_ref()
+            .ok_or_else(|| DataFusionError::Internal("output_schema is missing in MapPartitionExecNode".to_string()))?;
+        
+        let arrow_schema: arrow::datatypes::Schema = output_schema.try_into()?;
+
+        // Extract SO function if present
+        let so_function = match &map_partition.function {
+            Some(protobuf::map_partition_exec_node::Function::SoFunction(so)) => {
+                Some(datafusion_physical_plan::map_partition::SoFunction {
+                    so_path: so.so_path.clone(),
+                    function_name: so.function_name.clone(),
+                })
+            }
+            None => None,
+        };
+
+        // For now, we only support SO-based MapPartition (closure cannot be serialized)
+        let so_function = so_function.ok_or_else(|| {
+            DataFusionError::NotImplemented(
+                "Only SO-based MapPartition is supported for serialization".to_string(),
+            )
+        })?;
+
+        Ok(Arc::new(MapPartitionExec::try_new_with_so(
+            input,
+            Arc::new(arrow_schema),
+            so_function.so_path,
+            so_function.function_name,
+        )?))
+    }
+
     fn try_from_explain_exec(
         exec: &ExplainExec,
         _codec: &dyn PhysicalExtensionCodec,
@@ -3641,6 +3697,39 @@ impl protobuf::PhysicalPlanNode {
                 protobuf::BufferExecNode {
                     input: Some(Box::new(input)),
                     capacity: exec.capacity() as u64,
+                },
+            ))),
+        })
+    }
+
+    fn try_from_map_partition_exec(
+        exec: &datafusion_physical_plan::map_partition::MapPartitionExec,
+        _extension_codec: &dyn PhysicalExtensionCodec,
+        _proto_converter: &dyn PhysicalProtoConverterExtension,
+    ) -> Result<Self> {
+        let input = protobuf::PhysicalPlanNode::try_from_physical_plan(
+            Arc::clone(exec.input()),
+            _extension_codec,
+        )?;
+
+        // Only SO-based MapPartition can be serialized
+        let so_function = exec.so_function().ok_or_else(|| {
+            DataFusionError::NotImplemented(
+                "Only SO-based MapPartition is supported for serialization".to_string(),
+            )
+        })?;
+
+        Ok(protobuf::PhysicalPlanNode {
+            physical_plan_type: Some(PhysicalPlanType::MapPartition(Box::new(
+                protobuf::MapPartitionExecNode {
+                    input: Some(Box::new(input)),
+                    output_schema: Some(exec.output_schema().as_ref().try_into()?),
+                    function: Some(protobuf::map_partition_exec_node::Function::SoFunction(
+                        protobuf::SoFunction {
+                            so_path: so_function.so_path.clone(),
+                            function_name: so_function.function_name.clone(),
+                        },
+                    )),
                 },
             ))),
         })

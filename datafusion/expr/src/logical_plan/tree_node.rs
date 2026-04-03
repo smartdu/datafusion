@@ -154,11 +154,13 @@ impl TreeNode for LogicalPlan {
                 input,
                 output_schema,
                 func_name,
+                so_config,
             }) => input.map_elements(f)?.update_data(|input| {
                 LogicalPlan::MapPartition(MapPartition {
                     input,
                     output_schema,
                     func_name,
+                    so_config,
                 })
             }),
             LogicalPlan::Subquery(Subquery {

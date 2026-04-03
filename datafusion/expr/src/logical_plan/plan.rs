@@ -1164,6 +1164,7 @@ impl LogicalPlan {
             LogicalPlan::MapPartition(MapPartition {
                 output_schema,
                 func_name,
+                so_config,
                 ..
             }) => {
                 self.assert_no_expressions(expr)?;
@@ -1172,6 +1173,7 @@ impl LogicalPlan {
                     input: Arc::new(input),
                     output_schema: Arc::clone(output_schema),
                     func_name: func_name.clone(),
+                    so_config: so_config.clone(),
                 }))
             }
         }
@@ -3456,13 +3458,26 @@ pub struct MapPartition {
     pub output_schema: DFSchemaRef,
     /// A description of the function being applied (for display purposes)
     pub func_name: String,
+    /// Optional SO (Shared Object) function configuration for distributed execution
+    /// When set, the map_partition will be executed via a dynamically loaded SO library
+    pub so_config: Option<SoFunctionConfig>,
+}
+
+/// Configuration for SO (Shared Object) based map_partition execution
+/// This allows the function to be serialized and executed in distributed environments
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd)]
+pub struct SoFunctionConfig {
+    /// Path to the SO library file
+    pub so_path: String,
+    /// Name of the function to call in the SO library
+    pub function_name: String,
 }
 
 // Manual implementation needed because of `output_schema` field. Comparison excludes this field.
 impl PartialOrd for MapPartition {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        (&self.input, &self.func_name)
-            .partial_cmp(&(&other.input, &other.func_name))
+        (&self.input, &self.func_name, &self.so_config)
+            .partial_cmp(&(&other.input, &other.func_name, &other.so_config))
             // TODO (https://github.com/apache/datafusion/issues/17477) avoid recomparing all fields
             .filter(|cmp| *cmp != Ordering::Equal || self == other)
     }
@@ -3479,6 +3494,27 @@ impl MapPartition {
             input,
             output_schema,
             func_name,
+            so_config: None,
+        })
+    }
+
+    /// Create a new MapPartition logical plan node with SO function configuration
+    /// This enables distributed execution via Ballista
+    pub fn try_new_with_so(
+        input: Arc<LogicalPlan>,
+        output_schema: DFSchemaRef,
+        func_name: String,
+        so_path: String,
+        so_function_name: String,
+    ) -> Result<Self> {
+        Ok(Self {
+            input,
+            output_schema,
+            func_name,
+            so_config: Some(SoFunctionConfig {
+                so_path,
+                function_name: so_function_name,
+            }),
         })
     }
 }

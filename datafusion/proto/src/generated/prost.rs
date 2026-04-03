@@ -5,7 +5,7 @@
 pub struct LogicalPlanNode {
     #[prost(
         oneof = "logical_plan_node::LogicalPlanType",
-        tags = "1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33"
+        tags = "1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34"
     )]
     pub logical_plan_type: ::core::option::Option<logical_plan_node::LogicalPlanType>,
 }
@@ -77,6 +77,8 @@ pub mod logical_plan_node {
         CteWorkTableScan(super::CteWorkTableScanNode),
         #[prost(message, tag = "33")]
         Dml(::prost::alloc::boxed::Box<super::DmlNode>),
+        #[prost(message, tag = "34")]
+        MapPartition(::prost::alloc::boxed::Box<super::LogicalMapPartitionNode>),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -537,6 +539,20 @@ pub struct RecursionUnnestOption {
     pub input_column: ::core::option::Option<super::datafusion_common::Column>,
     #[prost(uint32, tag = "3")]
     pub depth: u32,
+}
+/// Logical MapPartition node for SO-based distributed computation
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct LogicalMapPartitionNode {
+    #[prost(message, optional, boxed, tag = "1")]
+    pub input: ::core::option::Option<::prost::alloc::boxed::Box<LogicalPlanNode>>,
+    #[prost(message, optional, tag = "2")]
+    pub output_schema: ::core::option::Option<super::datafusion_common::DfSchema>,
+    #[prost(string, tag = "3")]
+    pub func_name: ::prost::alloc::string::String,
+    /// SO function configuration for distributed execution
+    /// Only set when the function can be serialized
+    #[prost(message, optional, tag = "4")]
+    pub so_function: ::core::option::Option<SoFunction>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct UnionNode {
@@ -1102,7 +1118,7 @@ pub mod table_reference {
 pub struct PhysicalPlanNode {
     #[prost(
         oneof = "physical_plan_node::PhysicalPlanType",
-        tags = "1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38"
+        tags = "1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39"
     )]
     pub physical_plan_type: ::core::option::Option<physical_plan_node::PhysicalPlanType>,
 }
@@ -1186,6 +1202,8 @@ pub mod physical_plan_node {
         Buffer(::prost::alloc::boxed::Box<super::BufferExecNode>),
         #[prost(message, tag = "38")]
         ArrowScan(super::ArrowScanExecNode),
+        #[prost(message, tag = "39")]
+        MapPartition(::prost::alloc::boxed::Box<super::MapPartitionExecNode>),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1708,6 +1726,33 @@ pub struct MemoryScanExecNode {
     pub show_sizes: bool,
     #[prost(uint32, optional, tag = "6")]
     pub fetch: ::core::option::Option<u32>,
+}
+/// SO function for MapPartitionExec
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
+pub struct SoFunction {
+    #[prost(string, tag = "1")]
+    pub so_path: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub function_name: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct MapPartitionExecNode {
+    #[prost(message, optional, boxed, tag = "1")]
+    pub input: ::core::option::Option<::prost::alloc::boxed::Box<PhysicalPlanNode>>,
+    #[prost(message, optional, tag = "2")]
+    pub output_schema: ::core::option::Option<super::datafusion_common::Schema>,
+    #[prost(oneof = "map_partition_exec_node::Function", tags = "4")]
+    pub function: ::core::option::Option<map_partition_exec_node::Function>,
+}
+/// Nested message and enum types in `MapPartitionExecNode`.
+pub mod map_partition_exec_node {
+    #[derive(Clone, PartialEq, Eq, Hash, ::prost::Oneof)]
+    pub enum Function {
+        /// Reserved for closure function (cannot be serialized)
+        /// bytes closure = 3;
+        #[prost(message, tag = "4")]
+        SoFunction(super::SoFunction),
+    }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct CooperativeExecNode {

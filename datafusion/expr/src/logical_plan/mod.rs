@@ -41,7 +41,7 @@ pub use plan::{
     Aggregate, Analyze, ColumnUnnestList, DescribeTable, Distinct, DistinctOn,
     EmptyRelation, Explain, ExplainOption, Extension, FetchType, Filter, Join,
     JoinConstraint, JoinType, Limit, LogicalPlan, MapPartition, Partitioning, PlanType,
-    Projection, RecursiveQuery, Repartition, SkipType, Sort, StringifiedPlan, Subquery,
+    Projection, RecursiveQuery, Repartition, SkipType, SoFunctionConfig, Sort, StringifiedPlan, Subquery,
     SubqueryAlias, TableScan, ToStringifiedPlan, Union, Unnest, Values, Window,
     projection_schema,
 };
