@@ -3,7 +3,7 @@ name = "datafusion-docs"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-  "sphinx>=9,<10",
+  "sphinx>=9.0.4,<10",
   "sphinx-reredirects>=1.1,<2",
   "pydata-sphinx-theme>=0.16,<1",
   "myst-parser>=5,<6",
